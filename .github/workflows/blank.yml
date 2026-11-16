@@ -1,0 +1,55 @@
+name: Build & Release APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Agar loyiha fayllari emas, faqat .zip yuklangan bo'lsa — uni ochib olamiz
+      - name: Unpack zip (if needed)
+        run: |
+          if [ ! -f settings.gradle.kts ]; then
+            z=$(ls *.zip 2>/dev/null | head -n1)
+            if [ -z "$z" ]; then echo "settings.gradle.kts ham, .zip ham topilmadi"; exit 1; fi
+            unzip -q -o "$z" -d /tmp/src
+            root=$(dirname "$(find /tmp/src -name settings.gradle.kts | head -n1)")
+            cp -a "$root"/. .
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Build release APK
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: Rename APK
+        run: cp app/build/outputs/apk/release/*.apk MROS-Notes.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MROS-Notes-v${{ github.run_number }}
+          path: MROS-Notes.apk
+
+      # Ilova ichidagi "Yangilanishlarni tekshirish" shu Release'ni o'qiydi
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: MROS Notes 1.0.${{ github.run_number }}
+          body: ${{ github.event.head_commit.message }}
+          files: MROS-Notes.apk
+          make_latest: true
